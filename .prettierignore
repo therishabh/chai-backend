@@ -1,0 +1,11 @@
+# Ignore folders
+node_modules
+.next
+dist
+build
+coverage
+public
+
+# Ignore generated files
+*.log
+*.lock
