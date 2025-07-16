@@ -5,12 +5,9 @@ import { app } from "./app.js";
 const port = process.env.PORT || 8080;
 
 dotenv.config();
+
 connectDB()
   .then(() => {
-    app.on("error", (error) => {
-      console.log("Express error : ", error);
-      throw error;
-    });
     const server = app.listen(port, () => {
       console.log(`Server is running at port : ${port}`);
     });
