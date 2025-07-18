@@ -60,7 +60,17 @@ userSchema.pre("save", async function (next) {
 });
 
 userSchema.methods.isPasswordCorrect = async function (password) {
-    return await bcrypt.compare(this.password, password);
+    return await bcrypt.compare(password, this.password);
+};
+
+userSchema.methods.toJSON = function () {
+    const user = this.toObject(); // Convert from Mongoose document to plain object
+    delete user.password;
+    delete user.refreshToken;
+    delete user.createdAt;
+    delete user.updatedAt;
+    delete user.__v;
+    return user;
 };
 
 userSchema.methods.generateAccessToken = function () {

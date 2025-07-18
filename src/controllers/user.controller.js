@@ -4,6 +4,26 @@ import { ApiResponse } from "./../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
+const generateAccessRefreshToken = async (user) => {
+    try {
+        const accessToken = await user.generateAccessToken();
+        const refreshToken = await user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+        await user.save({ validateBeforeSave: false });
+
+        return {
+            accessToken,
+            refreshToken,
+        };
+    } catch (error) {
+        throw new ApiError(
+            500,
+            "Something went wrong while generating refresh and access token"
+        );
+    }
+};
+
 const registerUserController = asyncHandler(async (req, res, next) => {
     // get user details from frontend
     // validation - not empty
@@ -42,7 +62,9 @@ const registerUserController = asyncHandler(async (req, res, next) => {
     }
 
     // check if user already exists: username, email
-    const existingUser = await User.findOne({ $or: [{ email, username }] });
+    const existingUser = await User.findOne({
+        $or: [{ email }, { username }],
+    }).lean();
     if (existingUser) {
         return next(new ApiError(400, "Email or Username already exists"));
     }
@@ -110,4 +132,57 @@ const registerUserController = asyncHandler(async (req, res, next) => {
         );
 });
 
-export { registerUserController };
+const loginUserController = asyncHandler(async (req, res, next) => {
+    const { email, username, password } = req.body;
+
+    // check if email or username should not be empty
+    if (!(email || username)) {
+        throw new ApiError(400, "email or username is required for login");
+    }
+
+    // check if password should not be empty
+    if (!password) {
+        throw new ApiError(400, "password is required");
+    }
+
+    // fetch user info based on email id or password from database
+    const user = await User.findOne({
+        $or: [{ email }, { username }],
+    }).select("-__v -createdAt");
+
+    // throw error if user is not exist in database
+    if (!user) {
+        throw new ApiError(400, "invalid user");
+    }
+
+    const isPasswordValid = await user.isPasswordCorrect(password);
+    if (!isPasswordValid) {
+        throw new ApiError(400, "invalid user credentials");
+    }
+
+    const { accessToken, refreshToken } =
+        await generateAccessRefreshToken(user);
+
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true,
+    };
+
+    const userObject = user.toJSON();
+    res.status(200)
+        .cookie("accessToken", accessToken, cookieOptions)
+        .cookie("refreshToken", refreshToken, cookieOptions)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                    user: userObject,
+                    refreshToken,
+                    accessToken,
+                },
+                "successfully login"
+            )
+        );
+});
+
+export { registerUserController, loginUserController };
