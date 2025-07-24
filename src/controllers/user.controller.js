@@ -3,6 +3,12 @@ import { ApiError } from "./../utils/ApiError.js";
 import { ApiResponse } from "./../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
+
+const cookieOptions = {
+    httpOnly: true,
+    secure: true,
+};
 
 const generateAccessRefreshToken = async (user) => {
     try {
@@ -163,11 +169,6 @@ const loginUserController = asyncHandler(async (req, res, next) => {
     const { accessToken, refreshToken } =
         await generateAccessRefreshToken(user);
 
-    const cookieOptions = {
-        httpOnly: true,
-        secure: true,
-    };
-
     const userObject = user.toJSON();
     res.status(200)
         .cookie("accessToken", accessToken, cookieOptions)
@@ -185,4 +186,102 @@ const loginUserController = asyncHandler(async (req, res, next) => {
         );
 });
 
-export { registerUserController, loginUserController };
+const logoutUserController = asyncHandler(async (req, res, next) => {
+    const { _id } = req.user;
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            //$unset is a MongoDB operator that removes a field from a document.
+            $unset: {
+                refreshToken: 1, // this removes the field from document
+            },
+        },
+        {
+            // This tells Mongoose to return the updated document instead of the original.
+            new: true,
+        }
+    );
+
+    res.status(200)
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
+        .json(new ApiResponse(200, {}, "User logged Out"));
+});
+
+const refreshTokenController = asyncHandler(async (req, res) => {
+    const incomingRefreshToken =
+        req.cookies["refreshToken"] || req.body?.refreshToken;
+
+    if (!incomingRefreshToken) {
+        throw new ApiError(401, "unauthorized request");
+    }
+
+    try {
+        const decodeToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        );
+        const { _id } = decodeToken;
+        const user = await User.findById(_id);
+
+        if (!user) {
+            throw new ApiError(401, "Invalid refresh token");
+        }
+
+        if (incomingRefreshToken !== user.refreshToken) {
+            throw new ApiError(401, "refresh token is expired or used");
+        }
+
+        const { accessToken, refreshToken } =
+            await generateAccessRefreshToken(user);
+
+        res.status(200)
+            .cookie("accessToken", accessToken, cookieOptions)
+            .cookie("refreshToken", refreshToken, cookieOptions)
+            .json(
+                new ApiResponse(
+                    200,
+                    {
+                        refreshToken,
+                        accessToken,
+                    },
+                    "successfully login"
+                )
+            );
+    } catch (err) {
+        throw new ApiError(401, err?.message || "invalid refresh token");
+    }
+});
+
+const changePasswordController = asyncHandler(async (req, res) => {
+    const { _id } = req.user;
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+        throw new ApiError(400, "please enter oldPassword and newPassword");
+    }
+
+    // fetch user info from DB
+    const user = await User.findById(_id);
+    // validate for password correction.
+    const isValidPassword = await user.isPasswordCorrect(oldPassword);
+
+    if (!isValidPassword) {
+        throw new ApiError(400, "oldPassword is not valid");
+    }
+
+    user.password = newPassword;
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json(
+        new ApiResponse(200, {}, "Password successfully changed.")
+    );
+});
+
+export {
+    registerUserController,
+    loginUserController,
+    logoutUserController,
+    refreshTokenController,
+    changePasswordController,
+};
