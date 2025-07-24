@@ -70,7 +70,7 @@ const registerUserController = asyncHandler(async (req, res, next) => {
     // check if user already exists: username, email
     const existingUser = await User.findOne({
         $or: [{ email }, { username }],
-    }).lean();
+    }).lean(); // By default, Mongoose returns a Mongoose document, which has many helper methods (like .save(), .validate(), etc.). When you use .lean(), it bypasses those Mongoose features and returns a plain JS object.
     if (existingUser) {
         return next(new ApiError(400, "Email or Username already exists"));
     }
@@ -278,10 +278,55 @@ const changePasswordController = asyncHandler(async (req, res) => {
     );
 });
 
+const getCurrentUser = asyncHandler(async (req, res) => {
+    res.status(200).json(
+        new ApiResponse(200, req.user, "current user fetched successfully")
+    );
+});
+
+const updateAccountDetails = asyncHandler(async (req, res) => {
+    const { fullName, email } = req.body;
+
+    if (!fullName || !email) {
+        throw new ApiError(400, "All fields are required");
+    }
+
+    const userByEmail = await User.findOne({
+        email,
+        _id: { $ne: req.user?._id }, // exclude this _id
+    }).lean();
+    // $ne is a MongoDB query operator that stands for "not equal". It’s used to find documents where a field’s value is not equal to a specific value.
+
+    if (userByEmail) {
+        throw new ApiError(400, "Email id already exist");
+    }
+
+    console.log("userByEmail", userByEmail);
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullName,
+                email,
+            },
+        },
+        {
+            new: true, // that parameter help us to return updated information, if i'll not pass that parameter then old data will show
+        }
+    );
+
+    res.status(200).json(
+        new ApiResponse(200, user, "Account details updated, successfully")
+    );
+});
+
 export {
     registerUserController,
     loginUserController,
     logoutUserController,
     refreshTokenController,
     changePasswordController,
+    getCurrentUser,
+    updateAccountDetails,
 };
