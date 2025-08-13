@@ -59,11 +59,9 @@ const registerUserController = asyncHandler(async (req, res, next) => {
     }
 
     if (isAnyFieldEmpty) {
-        return next(
-            new ApiError(
-                400,
-                `${emptyFieldArray.join(", ")} fields are required`
-            )
+        throw new ApiError(
+            400,
+            `${emptyFieldArray.join(", ")} fields are required`
         );
     }
 
@@ -72,7 +70,7 @@ const registerUserController = asyncHandler(async (req, res, next) => {
         $or: [{ email }, { username }],
     }).lean(); // By default, Mongoose returns a Mongoose document, which has many helper methods (like .save(), .validate(), etc.). When you use .lean(), it bypasses those Mongoose features and returns a plain JS object.
     if (existingUser) {
-        return next(new ApiError(400, "Email or Username already exists"));
+        throw new ApiError(400, "Email or Username already exists");
     }
 
     // check for images, check for avatar
@@ -89,8 +87,6 @@ const registerUserController = asyncHandler(async (req, res, next) => {
     if (!avatarPath) {
         return next(new ApiError(400, "avatar Image is required"));
     }
-
-    console.log("avatarPath", avatarPath);
 
     const avatarImageServerObj = await uploadOnCloudinary(avatarPath);
 
@@ -169,7 +165,7 @@ const loginUserController = asyncHandler(async (req, res, next) => {
     const { accessToken, refreshToken } =
         await generateAccessRefreshToken(user);
 
-    const userObject = user.toJSON();
+    const userObject = user;
     res.status(200)
         .cookie("accessToken", accessToken, cookieOptions)
         .cookie("refreshToken", refreshToken, cookieOptions)
@@ -279,6 +275,7 @@ const changePasswordController = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
+    // Jab aap Mongoose document ko JSON me convert karte ho (like sending it in response from API, or using res.json(user)), to Mongoose automatically call karta hai toJSON() method.
     res.status(200).json(
         new ApiResponse(200, req.user, "current user fetched successfully")
     );
@@ -301,8 +298,6 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Email id already exist");
     }
 
-    console.log("userByEmail", userByEmail);
-
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
@@ -321,6 +316,66 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
     );
 });
 
+const updateUserAvatar = asyncHandler(async (req, res) => {
+    const avatarLocalPath = req.file?.path;
+
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar file is missing");
+    }
+
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+    if (!avatar?.url) {
+        throw new ApiError(400, "Error while uploading on avatar");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                avatar: avatar.url,
+            },
+        },
+        {
+            new: true,
+        }
+    );
+
+    res.status(200).json(
+        new ApiResponse(200, user, "Avatar image updated successfully")
+    );
+});
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+    const coverImageLocalPath = req.file?.path;
+
+    if (!coverImageLocalPath) {
+        throw new ApiError(400, "Cover Image file is missing");
+    }
+
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+
+    if (!coverImage?.url) {
+        throw new ApiError(400, "Error while uploading on cover Image");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                coverImage: coverImage.url,
+            },
+        },
+        {
+            new: true,
+        }
+    );
+
+    res.status(200).json(
+        new ApiResponse(200, user, "Cover image updated successfully")
+    );
+});
+
 export {
     registerUserController,
     loginUserController,
@@ -329,4 +384,6 @@ export {
     changePasswordController,
     getCurrentUser,
     updateAccountDetails,
+    updateUserAvatar,
+    updateUserCoverImage,
 };

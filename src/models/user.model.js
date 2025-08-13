@@ -18,6 +18,7 @@ const userSchema = new Schema(
             unique: true,
             lowercase: true,
             trim: true,
+            // set: (v) => v.toLowerCase(), // auto lowercase on save
         },
         fullName: {
             type: String,
@@ -41,6 +42,7 @@ const userSchema = new Schema(
         password: {
             type: String,
             required: [true, "Password is required"],
+            minlength: [6, "Password must be at least 6 characters"],
         },
         refreshToken: {
             type: String,
@@ -66,10 +68,8 @@ userSchema.methods.isPasswordCorrect = async function (password) {
 userSchema.methods.toJSON = function () {
     const user = this.toObject(); // Convert from Mongoose document to plain object
     delete user.password;
-    delete user.refreshToken;
-    delete user.createdAt;
-    delete user.updatedAt;
     delete user.__v;
+    delete user.refreshToken;
     return user;
 };
 
